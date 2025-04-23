@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>政昕輪業 × 輪胎升級查詢工具</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #f9f9f9;
+      margin: 0; padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    .section {
+      margin: 20px auto;
+      max-width: 600px;
+      padding: 20px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    select, input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: #111;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #result, #comparison {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #eee;
+      border-radius: 4px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>政昕輪業 × 輪胎升級查詢工具</h1>
+  <div class="section">
+    <label for="make">車廠（品牌）</label>
+    <select id="make"></select>
+
+    <label for="model">車型</label>
+    <select id="model"></select>
+
+    <label for="year">年份</label>
+    <select id="year"></select>
+
+    <label for="modification">版本 / 引擎</label>
+    <select id="modification"></select>
+
+    <button onclick="getWheelInfo()">查詢原廠輪胎資訊</button>
+    <div id="result"></div>
+
+    <hr>
+
+    <h3>升級後尺寸評估</h3>
+    <label for="newWidth">升級胎寬 (mm)</label>
+    <input type="number" id="newWidth">
+
+    <label for="newAspect">升級扁平比 (%)</label>
+    <input type="number" id="newAspect">
+
+    <label for="newRim">升級輪圈直徑 (吋)</label>
+    <input type="number" id="newRim">
+
+    <button onclick="compareTires()">比較尺寸差異</button>
+    <div id="comparison"></div>
+  </div>
+
+  <script>
+    const apiKey = '85a5cdf93af2ebd83623d56f3d592f44';
+    const apiBase = 'https://api.wheel-size.com/v2';
+    let stockTire = null;
+
+    async function fetchMakes() {
+      const res = await fetch(`${apiBase}/makes/?user_key=${apiKey}`);
+      const json = await res.json();
+      const sel = document.getElementById('make');
+      json.data.forEach(make => {
+        const opt = document.createElement('option');
+        opt.value = make.slug;
+        opt.textContent = make.name;
+        sel.appendChild(opt);
+      });
+    }
+
+    document.getElementById('make').addEventListener('change', async function() {
+      const make = this.value;
+      const res = await fetch(`${apiBase}/models/?make=${make}&user_key=${apiKey}`);
+      const json = await res.json();
+      const sel = document.getElementById('model');
+      sel.innerHTML = '';
+      json.data.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.slug;
+        opt.textContent = item.name;
+        sel.appendChild(opt);
+      });
+    });
+
+    document.getElementById('model').addEventListener('change', async function() {
+      const make = document.getElementById('make').value;
+      const model = this.value;
+      const res = await fetch(`${apiBase}/years/?make=${make}&model=${model}&user_key=${apiKey}`);
+      const json = await res.json();
+      const sel = document.getElementById('year');
+      sel.innerHTML = '';
+      json.data.forEach(year => {
+        const opt = document.createElement('option');
+        opt.value = year;
+        opt.textContent = year;
+        sel.appendChild(opt);
+      });
+    });
+
+    document.getElementById('year').addEventListener('change', async function() {
+      const make = document.getElementById('make').value;
+      const model = document.getElementById('model').value;
+      const year = this.value;
+      const res = await fetch(`${apiBase}/modifications/?make=${make}&model=${model}&year=${year}&user_key=${apiKey}`);
+      const json = await res.json();
+      const sel = document.getElementById('modification');
+      sel.innerHTML = '';
+      json.data.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.slug;
+        opt.textContent = item.name;
+        sel.appendChild(opt);
+      });
+    });
+
+    async function getWheelInfo() {
+      const make = document.getElementById('make').value;
+      const model = document.getElementById('model').value;
+      const year = document.getElementById('year').value;
+      const mod = document.getElementById('modification').value;
+      const res = await fetch(`${apiBase}/search/by_model/?make=${make}&model=${model}&year=${year}&modification=${mod}&user_key=${apiKey}`);
+      const json = await res.json();
+      const data = json.data[0]?.wheels?.[0]?.front;
+      stockTire = data;
+      const result = document.getElementById('result');
+      if (data) {
+        result.innerHTML = `原廠輪胎尺寸：${data.tire}，輪圈：${data.rim}`;
+      } else {
+        result.innerHTML = '查無原廠輪胎資料。';
+      }
+    }
+
+    function compareTires() {
+      const w = parseFloat(document.getElementById('newWidth').value);
+      const a = parseFloat(document.getElementById('newAspect').value);
+      const r = parseFloat(document.getElementById('newRim').value);
+      const comparison = document.getElementById('comparison');
+      if (!stockTire || !stockTire.tire_width || !stockTire.tire_aspect_ratio || !stockTire.rim_diameter) {
+        comparison.innerHTML = '請先查詢原廠輪胎尺寸。';
+        return;
+      }
+      const ori_d = stockTire.tire_width * (stockTire.tire_aspect_ratio / 100) * 2 / 25.4 + stockTire.rim_diameter;
+      const new_d = w * (a / 100) * 2 / 25.4 + r;
+      const diff = new_d - ori_d;
+      const percent = (diff / ori_d * 100).toFixed(2);
+      let msg = `原廠總直徑：${ori_d.toFixed(2)} 吋\n升級後總直徑：${new_d.toFixed(2)} 吋\n差異：${diff.toFixed(2)} 吋 (${percent}%)\n`;
+      if (Math.abs(diff / ori_d) > 0.03) {
+        msg += '⚠️ 超過 ±3%，建議重新校正儀表或避免使用';
+      } else {
+        msg += '✅ 差異在可接受範圍內';
+      }
+      comparison.innerHTML = msg;
+    }
+
+    fetchMakes();
+  </script>
+</body>
+</html>
